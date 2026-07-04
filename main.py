@@ -4,35 +4,22 @@ import mediapipe as mp
 import cv2
 import numpy as np
 
-app = FastAPI(title="Pose + Hands API")
+app = FastAPI(title="MediaPipe Holistic API")
 
-# ←←← Improved CORS Configuration ←←←
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "https://motionplay.vercel.app",   # Your frontend
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "*"                                # Remove this in production for security
-    ],
+    allow_origins=["https://motionplay.vercel.app", "http://localhost:3000", "*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# MediaPipe setup
-mp_hands = mp.solutions.hands
-mp_pose = mp.solutions.pose
+# Holistic Solution (Face + Hands + Pose in one model)
+mp_holistic = mp.solutions.holistic
 
-hands_detector = mp_hands.Hands(
+holistic = mp_holistic.Holistic(
     static_image_mode=False,
-    max_num_hands=2,
-    min_detection_confidence=0.5,
-    min_tracking_confidence=0.5
-)
-
-pose_detector = mp_pose.Pose(
-    static_image_mode=False,
+    model_complexity=1,           # 0 = lite, 1 = full, 2 = heavy
     min_detection_confidence=0.5,
     min_tracking_confidence=0.5
 )
@@ -48,28 +35,40 @@ async def detect(file: UploadFile = File(...)):
             return {"error": "Invalid image"}
 
         image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        results = holistic.process(image_rgb)
 
-        hand_results = hands_detector.process(image_rgb)
-        pose_results = pose_detector.process(image_rgb)
+        # Extract data
+        data = {
+            "pose": [],
+            "hands": [],
+            "face": []
+        }
 
-        hands_data = []
-        if hand_results.multi_hand_landmarks:
-            for handLms in hand_results.multi_hand_landmarks:
-                hands_data.append({
-                    "landmarks": [{"x": lm.x, "y": lm.y, "z": lm.z} for lm in handLms.landmark]
-                })
-
-        pose_data = []
-        if pose_results.pose_landmarks:
-            pose_data = [
+        # Pose
+        if results.pose_landmarks:
+            data["pose"] = [
                 {"x": lm.x, "y": lm.y, "z": lm.z, "visibility": lm.visibility}
-                for lm in pose_results.pose_landmarks.landmark
+                for lm in results.pose_landmarks.landmark
             ]
 
-        return {
-            "hands": hands_data,
-            "pose": pose_data
-        }
+        # Hands (left + right)
+        if results.left_hand_landmarks:
+            data["hands"].append({
+                "side": "left",
+                "landmarks": [{"x": lm.x, "y": lm.y, "z": lm.z} for lm in results.left_hand_landmarks.landmark]
+            })
+        if results.right_hand_landmarks:
+            data["hands"].append({
+                "side": "right",
+                "landmarks": [{"x": lm.x, "y": lm.y, "z": lm.z} for lm in results.right_hand_landmarks.landmark]
+            })
+
+        # Face
+        if results.face_landmarks:
+            data["face"] = [{"x": lm.x, "y": lm.y, "z": lm.z} for lm in results.face_landmarks.landmark]
+
+        return data
+
     except Exception as e:
         return {"error": str(e)}
 
