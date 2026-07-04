@@ -6,15 +6,21 @@ import numpy as np
 
 app = FastAPI(title="Pose + Hands API")
 
+# ←←← Improved CORS Configuration ←←←
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "https://motionplay.vercel.app",   # Your frontend
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "*"                                # Remove this in production for security
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Initialize MediaPipe
+# MediaPipe setup
 mp_hands = mp.solutions.hands
 mp_pose = mp.solutions.pose
 
@@ -69,4 +75,4 @@ async def detect(file: UploadFile = File(...)):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=False)
+    uvicorn.run("main:app", host="0.0.0.0", port=8000)
